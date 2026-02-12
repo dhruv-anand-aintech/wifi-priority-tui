@@ -56,7 +56,7 @@ class NetworkManager: ObservableObject {
                 case .success(let output):
                     self.parseNetworks(output)
                 case .failure(let error):
-                    self.errorMessage = error
+                    self.errorMessage = error.localizedDescription
                 }
             }
         }
@@ -91,7 +91,7 @@ class NetworkManager: ObservableObject {
                 if case .failure(let error) = result {
                     DispatchQueue.main.async {
                         self.isLoading = false
-                        completion(.failure(.networkAddFailed(network, error)))
+                        completion(.failure(.networkAddFailed(network, error.localizedDescription)))
                     }
                     return
                 }

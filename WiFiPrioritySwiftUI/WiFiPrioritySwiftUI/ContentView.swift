@@ -70,7 +70,7 @@ struct ContentView: View {
                 }
             case .failure(let error):
                 alertTitle = "Error"
-                alertMessage = error
+                alertMessage = error.localizedDescription
                 showingAlert = true
             }
         }
