@@ -3,6 +3,7 @@
 Interactive TUI for reordering macOS WiFi network priorities.
 """
 
+import os
 import subprocess
 import sys
 from typing import List
@@ -83,12 +84,15 @@ class WiFiReorderApp(App):
 
     BINDINGS = [
         Binding("space", "toggle_reorder_mode", "Reorder Mode", show=True),
+        Binding("r", "request_remove", "Remove Network", show=True),
         Binding("s", "save", "Save & Exit", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
 
     # Track whether we're in reorder mode
     reorder_mode: reactive[bool] = reactive(False)
+    # Track pending removal
+    pending_removal_index: reactive[int | None] = reactive(None)
 
     def __init__(self, networks: List[str], interface: str = "en0"):
         super().__init__()
@@ -105,7 +109,7 @@ class WiFiReorderApp(App):
         )
         yield Static(
             "📋 Higher position = preferred network\n"
-            "   Press SPACE to enter reorder mode, then ↑↓ to move • 's' to save • 'q' to quit",
+            "   SPACE: reorder mode • r: remove network • s: save • q: quit",
             id="instructions"
         )
 
@@ -129,24 +133,56 @@ class WiFiReorderApp(App):
         """Update the status message."""
         status = self.query_one("#status", Static)
 
-        # Show reorder mode status first if active
-        if self.reorder_mode:
+        # Show removal confirmation status first
+        if self.pending_removal_index is not None:
+            network_name = self.networks[self.pending_removal_index]
+            status.update(f"❗ Remove '{network_name}'? Press 'c' to confirm, any other key to cancel")
+        # Show reorder mode status if active
+        elif self.reorder_mode:
             status.update("🔄 REORDER MODE: Use ↑↓ or k/j to move network • Press SPACE to exit")
         elif self.networks != self.original_networks:
             status.update("⚠️  Changes not saved! Press 's' to save or 'q' to quit without saving.")
         else:
-            status.update("✅ No changes made. Press SPACE to reorder networks.")
+            status.update("✅ No changes made. Press SPACE to reorder, 'r' to remove networks.")
 
     def watch_reorder_mode(self, new_value: bool) -> None:
         """Update UI when reorder mode changes."""
         self.update_status()
 
+    def watch_pending_removal_index(self, new_value: int | None) -> None:
+        """Update UI when pending removal changes."""
+        self.update_status()
+
     def action_toggle_reorder_mode(self) -> None:
         """Toggle reorder mode on/off."""
+        # Cancel any pending removal
+        self.pending_removal_index = None
         self.reorder_mode = not self.reorder_mode
+
+    def action_request_remove(self) -> None:
+        """Request removal of the currently selected network."""
+        list_view = self.query_one("#network-list", ListView)
+
+        if list_view.index is None:
+            return
+
+        # Set pending removal
+        self.pending_removal_index = list_view.index
 
     def on_key(self, event) -> None:
         """Handle key presses for mode-aware navigation."""
+        # Handle confirmation for network removal
+        if self.pending_removal_index is not None:
+            if event.key == "c":
+                # Confirm removal
+                self._remove_network(self.pending_removal_index)
+                self.pending_removal_index = None
+            else:
+                # Cancel removal
+                self.pending_removal_index = None
+            event.prevent_default()
+            return
+
         # In reorder mode, arrow keys and k/j move the item
         if self.reorder_mode:
             if event.key in ("up", "k"):
@@ -203,10 +239,22 @@ class WiFiReorderApp(App):
     def _rebuild_list(self) -> None:
         """Rebuild the list view with current network order."""
         list_view = self.query_one("#network-list", ListView)
+        current_index = list_view.index or 0
         list_view.clear()
 
         for network in self.networks:
             list_view.append(NetworkListItem(network))
+
+        # Restore selection, adjusting if we're past the end
+        if self.networks:
+            list_view.index = min(current_index, len(self.networks) - 1)
+
+    def _remove_network(self, index: int) -> None:
+        """Remove a network from the list."""
+        if 0 <= index < len(self.networks):
+            self.networks.pop(index)
+            self._rebuild_list()
+            self.update_status()
 
     def action_save(self) -> None:
         """Save the new network order and exit."""
@@ -223,10 +271,10 @@ class WiFiReorderApp(App):
 
     def _apply_network_priority(self) -> None:
         """Apply the new network priority order using networksetup."""
-        # Remove all networks
+        # Remove all networks (running as sudo already)
         for network in self.original_networks:
             subprocess.run(
-                ["sudo", "networksetup", "-removepreferredwirelessnetwork",
+                ["networksetup", "-removepreferredwirelessnetwork",
                  self.interface, network],
                 check=False,  # Don't fail if network doesn't exist
                 capture_output=True
@@ -235,7 +283,7 @@ class WiFiReorderApp(App):
         # Add networks in reverse order (last added = highest priority)
         for network in reversed(self.networks):
             result = subprocess.run(
-                ["sudo", "networksetup", "-addpreferredwirelessnetworkatindex",
+                ["networksetup", "-addpreferredwirelessnetworkatindex",
                  self.interface, network, "0", "WPA2"],
                 capture_output=True,
                 text=True
@@ -268,6 +316,15 @@ def get_preferred_networks(interface: str = "en0") -> List[str]:
 
 def main():
     """Main entry point."""
+    # Check if running with sudo
+    if os.geteuid() != 0:
+        print("❌ This application requires administrator privileges to modify network settings.")
+        print("\nPlease run with sudo:")
+        print(f"  sudo wifi-priority")
+        print(f"\nOr if running directly:")
+        print(f"  sudo python {sys.argv[0]}")
+        sys.exit(1)
+
     try:
         # Get current network priority list
         networks = get_preferred_networks()
