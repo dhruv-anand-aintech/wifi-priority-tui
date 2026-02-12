@@ -70,15 +70,16 @@ class WiFiReorderApp(App):
         background: $accent 30%;
     }
 
-    /* Selected item - always visible whether focused or not */
-    ListItem.-active {
+    /* Selected item - make it very visible */
+    ListView > ListItem.-active {
         background: $accent;
         color: $text;
+        text-style: bold;
     }
 
-    /* Make selection even more visible when ListView is focused */
-    ListView:focus ListItem.-active {
-        background: $accent;
+    /* Extra emphasis when focused */
+    ListView:focus > ListItem.-active {
+        background: $warning;
         color: $text;
         text-style: bold;
     }
@@ -319,6 +320,7 @@ class WiFiReorderApp(App):
 
         # Add networks in reverse order (last added = highest priority)
         # Don't specify security type - macOS uses existing credentials from Keychain
+        failed_networks = []
         for network in reversed(self.networks):
             current += 1
             status.update(f"💾 Adding networks... ({current}/{total}) - {network}")
@@ -330,11 +332,22 @@ class WiFiReorderApp(App):
             )
 
             if result.returncode != 0:
-                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                raise Exception(f"Failed to add network '{network}': {error_msg}")
+                # Log the failure but continue with other networks
+                error_msg = result.stderr.strip() if result.stderr else result.stdout.strip()
+                if not error_msg:
+                    error_msg = f"Command failed with exit code {result.returncode}"
+                failed_networks.append((network, error_msg))
+                # Continue processing other networks
+                continue
 
             # Small delay to ensure macOS processes each addition sequentially
             time.sleep(0.1)
+
+        if failed_networks:
+            failed_list = "\n".join([f"  • {net}: {err}" for net, err in failed_networks])
+            status.update(f"⚠️ Some networks failed to save:\n{failed_list}")
+            time.sleep(3)  # Give user time to read
+            raise Exception(f"Failed to add {len(failed_networks)} network(s). See status for details.")
 
         status.update("✅ All networks saved!")
 
