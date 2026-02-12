@@ -6,6 +6,7 @@ Interactive TUI for reordering macOS WiFi network priorities.
 import os
 import subprocess
 import sys
+import time
 from typing import List
 
 from textual.app import App, ComposeResult
@@ -303,6 +304,9 @@ class WiFiReorderApp(App):
             )
             # Note: We ignore errors here as network might already be removed
 
+        # Wait for macOS to process all removals
+        time.sleep(0.5)
+
         # Add networks in reverse order (last added = highest priority)
         # Don't specify security type - macOS uses existing credentials from Keychain
         for network in reversed(self.networks):
@@ -316,6 +320,9 @@ class WiFiReorderApp(App):
             if result.returncode != 0:
                 error_msg = result.stderr.strip() if result.stderr else "Unknown error"
                 raise Exception(f"Failed to add network '{network}': {error_msg}")
+
+            # Small delay to ensure macOS processes each addition sequentially
+            time.sleep(0.1)
 
 
 def get_preferred_networks(interface: str = "en0") -> List[str]:
