@@ -7,6 +7,8 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import List
 
 from textual.app import App, ComposeResult
@@ -285,13 +287,48 @@ class WiFiReorderApp(App):
         try:
             # Show saving status
             status = self.query_one("#status", Static)
-            status.update("💾 Saving changes...")
+            status.update("💾 Creating backup...")
+
+            # Backup current network list before making changes
+            backup_path = self._backup_networks()
+
+            status.update(f"💾 Backup saved to: {backup_path}")
+            time.sleep(1)
 
             # Apply the new priority order with progress updates
             self._apply_network_priority(status)
             self.exit(message="✅ WiFi network priorities updated successfully!")
         except Exception as e:
             self.exit(message=f"❌ Error saving priorities: {e}")
+
+    def _backup_networks(self) -> str:
+        """Backup current network list before making changes.
+
+        Returns the path to the backup file.
+        """
+        # Create backups directory in user's home
+        backup_dir = Path.home() / ".wifi-priority-backups"
+        backup_dir.mkdir(exist_ok=True)
+
+        # Create timestamped backup file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = backup_dir / f"networks_{timestamp}.txt"
+
+        # Write network list to backup file
+        with open(backup_file, "w") as f:
+            f.write(f"# WiFi Priority Backup - {datetime.now()}\n")
+            f.write(f"# Interface: {self.interface}\n")
+            f.write(f"# Networks: {len(self.original_networks)}\n")
+            f.write("#\n")
+            for network in self.original_networks:
+                f.write(f"{network}\n")
+
+        # Keep only last 10 backups
+        backups = sorted(backup_dir.glob("networks_*.txt"))
+        for old_backup in backups[:-10]:
+            old_backup.unlink()
+
+        return str(backup_file)
 
     def _apply_network_priority(self, status: Static) -> None:
         """Apply the new network priority order using networksetup.
