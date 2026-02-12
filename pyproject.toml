@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wifi-priority-tui"
+version = "0.1.0"
+description = "Interactive TUI for reordering macOS WiFi network priorities"
+authors = [{name = "Dhruv Anand"}]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Environment :: Console",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "textual>=0.47.0",
+]
+
+[project.scripts]
+wifi-priority = "wifi_priority:main"
+
+[project.urls]
+Homepage = "https://github.com/dhruv-anand-aintech/wifi-priority-tui"
+Repository = "https://github.com/dhruv-anand-aintech/wifi-priority-tui"
+
+[tool.setuptools]
+py-modules = ["wifi_priority"]
