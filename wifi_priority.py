@@ -339,6 +339,27 @@ class WiFiReorderApp(App):
         status.update("✅ All networks saved!")
 
 
+def detect_wifi_interface() -> str:
+    """Detect the WiFi interface name."""
+    result = subprocess.run(
+        ["networksetup", "-listallhardwareports"],
+        capture_output=True,
+        text=True,
+        check=True
+    )
+
+    lines = result.stdout.split("\n")
+    for i, line in enumerate(lines):
+        if "Wi-Fi" in line or "AirPort" in line:
+            # Next line should have the device
+            if i + 1 < len(lines) and lines[i + 1].startswith("Device:"):
+                device = lines[i + 1].replace("Device:", "").strip()
+                return device
+
+    # Default fallback
+    return "en0"
+
+
 def get_preferred_networks(interface: str = "en0") -> List[str]:
     """Get the list of preferred WiFi networks in priority order."""
     result = subprocess.run(
@@ -372,16 +393,27 @@ def main():
         sys.exit(1)
 
     try:
+        # Detect WiFi interface
+        interface = detect_wifi_interface()
+        print(f"📡 Using WiFi interface: {interface}")
+
         # Get current network priority list
-        networks = get_preferred_networks()
+        networks = get_preferred_networks(interface)
 
         if not networks:
-            print("❌ No preferred WiFi networks found.")
-            print("Connect to some WiFi networks first, then try again.")
+            print("\n❌ No preferred WiFi networks found.")
+            print("\nThis means you don't have any saved networks in your preferred list.")
+            print("\nTo add networks:")
+            print("  1. Connect to WiFi networks you want to manage")
+            print("  2. Make sure 'Remember this network' is checked when connecting")
+            print("  3. Or add them manually in: System Settings → Network → WiFi → Advanced")
+            print(f"\nYou can verify with: networksetup -listpreferredwirelessnetworks {interface}")
             sys.exit(1)
 
+        print(f"✅ Found {len(networks)} preferred network(s)\n")
+
         # Run the TUI app
-        app = WiFiReorderApp(networks)
+        app = WiFiReorderApp(networks, interface)
         result = app.run()
 
         # Print result message
