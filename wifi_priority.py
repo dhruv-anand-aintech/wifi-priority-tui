@@ -282,20 +282,29 @@ class WiFiReorderApp(App):
             return
 
         try:
-            # Apply the new priority order
-            self._apply_network_priority()
+            # Show saving status
+            status = self.query_one("#status", Static)
+            status.update("💾 Saving changes...")
+
+            # Apply the new priority order with progress updates
+            self._apply_network_priority(status)
             self.exit(message="✅ WiFi network priorities updated successfully!")
         except Exception as e:
             self.exit(message=f"❌ Error saving priorities: {e}")
 
-    def _apply_network_priority(self) -> None:
+    def _apply_network_priority(self, status: Static) -> None:
         """Apply the new network priority order using networksetup.
 
         Strategy: Remove all networks, then re-add them in reverse order.
         Networks are added at index 0, so the last one added becomes highest priority.
         """
+        total = len(self.original_networks) + len(self.networks)
+        current = 0
+
         # Remove all networks from the original list
         for network in self.original_networks:
+            current += 1
+            status.update(f"💾 Removing networks... ({current}/{total}) - {network}")
             result = subprocess.run(
                 ["networksetup", "-removepreferredwirelessnetwork",
                  self.interface, network],
@@ -305,11 +314,14 @@ class WiFiReorderApp(App):
             # Note: We ignore errors here as network might already be removed
 
         # Wait for macOS to process all removals
+        status.update("⏳ Waiting for macOS to process changes...")
         time.sleep(0.5)
 
         # Add networks in reverse order (last added = highest priority)
         # Don't specify security type - macOS uses existing credentials from Keychain
         for network in reversed(self.networks):
+            current += 1
+            status.update(f"💾 Adding networks... ({current}/{total}) - {network}")
             result = subprocess.run(
                 ["networksetup", "-addpreferredwirelessnetworkatindex",
                  self.interface, network, "0"],
@@ -323,6 +335,8 @@ class WiFiReorderApp(App):
 
             # Small delay to ensure macOS processes each addition sequentially
             time.sleep(0.1)
+
+        status.update("✅ All networks saved!")
 
 
 def get_preferred_networks(interface: str = "en0") -> List[str]:

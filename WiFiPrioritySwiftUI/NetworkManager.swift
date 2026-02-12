@@ -81,11 +81,15 @@ class NetworkManager: ObservableObject {
                 )
             }
 
+            // Wait for macOS to process all removals
+            Thread.sleep(forTimeInterval: 0.5)
+
             // Add networks in reverse order (last added = highest priority)
+            // Don't specify security type - macOS uses existing credentials from Keychain
             for network in self.networks.reversed() {
                 let result = self.executeSudoCommand(
                     "/usr/sbin/networksetup",
-                    arguments: ["-addpreferredwirelessnetworkatindex", self.interface, network, "0", "WPA2"]
+                    arguments: ["-addpreferredwirelessnetworkatindex", self.interface, network, "0"]
                 )
 
                 if case .failure(let error) = result {
@@ -95,6 +99,9 @@ class NetworkManager: ObservableObject {
                     }
                     return
                 }
+
+                // Small delay to ensure macOS processes each addition sequentially
+                Thread.sleep(forTimeInterval: 0.1)
             }
 
             DispatchQueue.main.async {
