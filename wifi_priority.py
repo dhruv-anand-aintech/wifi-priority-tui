@@ -288,27 +288,34 @@ class WiFiReorderApp(App):
             self.exit(message=f"❌ Error saving priorities: {e}")
 
     def _apply_network_priority(self) -> None:
-        """Apply the new network priority order using networksetup."""
-        # Remove all networks (running as sudo already)
+        """Apply the new network priority order using networksetup.
+
+        Strategy: Remove all networks, then re-add them in reverse order.
+        Networks are added at index 0, so the last one added becomes highest priority.
+        """
+        # Remove all networks from the original list
         for network in self.original_networks:
-            subprocess.run(
+            result = subprocess.run(
                 ["networksetup", "-removepreferredwirelessnetwork",
                  self.interface, network],
-                check=False,  # Don't fail if network doesn't exist
-                capture_output=True
+                capture_output=True,
+                text=True
             )
+            # Note: We ignore errors here as network might already be removed
 
         # Add networks in reverse order (last added = highest priority)
+        # Don't specify security type - macOS uses existing credentials from Keychain
         for network in reversed(self.networks):
             result = subprocess.run(
                 ["networksetup", "-addpreferredwirelessnetworkatindex",
-                 self.interface, network, "0", "WPA2"],
+                 self.interface, network, "0"],
                 capture_output=True,
                 text=True
             )
 
             if result.returncode != 0:
-                raise Exception(f"Failed to add network '{network}': {result.stderr}")
+                error_msg = result.stderr.strip() if result.stderr else "Unknown error"
+                raise Exception(f"Failed to add network '{network}': {error_msg}")
 
 
 def get_preferred_networks(interface: str = "en0") -> List[str]:
