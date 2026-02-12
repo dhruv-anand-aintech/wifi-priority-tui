@@ -56,17 +56,30 @@ class WiFiReorderApp(App):
         margin: 1;
     }
 
+    ListView:focus {
+        border: solid $accent;
+    }
+
     ListItem {
         padding: 0 1;
+        background: transparent;
     }
 
     ListItem:hover {
         background: $accent 30%;
     }
 
+    /* Selected item - always visible whether focused or not */
     ListItem.-active {
         background: $accent;
         color: $text;
+    }
+
+    /* Make selection even more visible when ListView is focused */
+    ListView:focus ListItem.-active {
+        background: $accent;
+        color: $text;
+        text-style: bold;
     }
 
     .network-label {
@@ -127,6 +140,8 @@ class WiFiReorderApp(App):
         for network in self.networks:
             list_view.append(NetworkListItem(network))
 
+        # Ensure ListView is focused so selection is visible
+        list_view.focus()
         self.update_status()
 
     def update_status(self) -> None:
@@ -248,6 +263,9 @@ class WiFiReorderApp(App):
         # Restore selection, adjusting if we're past the end
         if self.networks:
             list_view.index = min(current_index, len(self.networks) - 1)
+
+        # Ensure ListView stays focused so selection remains visible
+        list_view.focus()
 
     def _remove_network(self, index: int) -> None:
         """Remove a network from the list."""
