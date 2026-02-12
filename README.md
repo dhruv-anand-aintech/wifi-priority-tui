@@ -2,6 +2,8 @@
 
 Interactive terminal UI for reordering macOS WiFi network priorities.
 
+**Also available:** Native SwiftUI macOS app in the [`WiFiPrioritySwiftUI/`](WiFiPrioritySwiftUI/) directory!
+
 ## Features
 
 - 🎨 Beautiful terminal interface using Textual
@@ -64,15 +66,30 @@ The app:
 
 Networks at the top of the list have higher priority. macOS will automatically connect to the highest priority network available.
 
+## Two Versions Available
+
+### 🖥️ TUI (Terminal) - This Package
+Python-based terminal interface with keyboard-driven navigation. Perfect for terminal enthusiasts and SSH sessions.
+
+### 🎨 SwiftUI (Native macOS)
+Native macOS app with drag-and-drop interface. See [`WiFiPrioritySwiftUI/`](WiFiPrioritySwiftUI/) for details.
+
 ## Why?
 
-macOS System Settings lets you reorder WiFi networks, but it's buried deep in menus and requires lots of clicking. This tool makes it quick and keyboard-driven.
+macOS System Settings lets you reorder WiFi networks, but it's buried deep in menus and requires lots of clicking. These tools make it quick and easy.
 
-Perfect for users who:
+**TUI version** is perfect for users who:
 - Switch between multiple WiFi networks frequently
 - Want to prioritize work/home networks
 - Need to prevent auto-connecting to certain networks
 - Prefer terminal interfaces
+- Work primarily in SSH sessions
+
+**SwiftUI version** is great for users who:
+- Prefer native macOS apps
+- Like drag-and-drop interfaces
+- Want a visual representation
+- Use macOS GUI primarily
 
 ## Screenshots
 
