@@ -8,7 +8,14 @@ Native macOS app for managing WiFi network priorities with a beautiful SwiftUI i
 - 🖱️ Drag-and-drop network reordering
 - 🔐 Secure admin authentication via macOS dialog
 - 💾 Real-time change detection
-- ⌨️ Keyboard shortcuts (⌘S to save, ⌘Q to quit)
+- ⌨️ Keyboard shortcuts (⌘S to save, ⌘Q to quit, Esc to reset)
+
+## Quick Build
+
+```bash
+./build.sh
+open build/WiFiPrioritySwiftUI.app
+```
 
 ## Building from Xcode
 
@@ -19,47 +26,13 @@ Native macOS app for managing WiFi network priorities with a beautiful SwiftUI i
    - Product Name: `WiFiPrioritySwiftUI`
    - Interface: SwiftUI
    - Language: Swift
-   - Bundle Identifier: `com.yourname.WiFiPrioritySwiftUI`
 
-3. Replace the generated files with the source files from this directory:
+3. Add the Swift files to your project:
    - `WiFiPriorityApp.swift`
    - `ContentView.swift`
    - `NetworkManager.swift`
 
-4. Copy `Info.plist` settings if needed
-
-5. Build and run (⌘R)
-
-## Building from Command Line
-
-You can also build using `xcodebuild`:
-
-```bash
-# Create Xcode project first (see above)
-# Then build from terminal
-xcodebuild -scheme WiFiPrioritySwiftUI -configuration Release
-
-# The app will be in:
-# ~/Library/Developer/Xcode/DerivedData/.../Build/Products/Release/
-```
-
-## Quick Build Script
-
-For easier building, use this script:
-
-```bash
-#!/bin/bash
-# build.sh - Quick build script
-
-# This requires an Xcode project to exist
-xcodebuild clean build \
-    -scheme WiFiPrioritySwiftUI \
-    -configuration Release \
-    -derivedDataPath ./build
-
-echo "✅ Build complete!"
-echo "App location: ./build/Build/Products/Release/WiFiPrioritySwiftUI.app"
-```
+4. Build and run (⌘R)
 
 ## Usage
 
@@ -72,34 +45,16 @@ echo "App location: ./build/Build/Products/Release/WiFiPrioritySwiftUI.app"
 ## Requirements
 
 - macOS 13.0 (Ventura) or later
-- Xcode 14.0 or later
+- Xcode Command Line Tools (for build.sh)
 - WiFi adapter (typically en0)
 
-## How It Works
+## Architecture
 
-The app uses the same `networksetup` command as the TUI version:
-- Reads network list: `networksetup -listpreferredwirelessnetworks en0`
-- Applies changes using AppleScript with admin privileges
-- Networks are removed and re-added in reverse order (last added = highest priority)
+- **WiFiPriorityApp.swift**: App entry point and window configuration
+- **NetworkManager.swift**: Business logic, networksetup command integration
+- **ContentView.swift**: SwiftUI UI with modular subviews
 
-## Screenshots
-
-The app features:
-- Clean header with WiFi icon and title
-- Instructions panel
-- Draggable network list with position numbers
-- Status bar showing unsaved changes
-- Save/Reset/Quit action buttons
-
-## Comparison with TUI Version
-
-| Feature | TUI (Python) | SwiftUI (Native) |
-|---------|-------------|------------------|
-| Interface | Terminal-based | Native macOS GUI |
-| Reordering | Space + Arrow keys | Drag and drop |
-| Platform | macOS terminal | macOS app |
-| Distribution | PyPI package | App bundle |
-| Dependencies | Python + Textual | None (native) |
+Uses AppleScript to prompt for admin password when saving changes.
 
 ## License
 

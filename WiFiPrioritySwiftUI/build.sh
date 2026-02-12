@@ -20,9 +20,9 @@ cp Info.plist build/WiFiPrioritySwiftUI.app/Contents/Info.plist
 # Compile Swift files
 echo "📦 Compiling Swift files..."
 swiftc -o build/WiFiPrioritySwiftUI.app/Contents/MacOS/WiFiPrioritySwiftUI \
-    WiFiPrioritySwiftUI/WiFiPriorityApp.swift \
-    WiFiPrioritySwiftUI/ContentView.swift \
-    WiFiPrioritySwiftUI/NetworkManager.swift \
+    WiFiPriorityApp.swift \
+    ContentView.swift \
+    NetworkManager.swift \
     -framework SwiftUI \
     -framework AppKit \
     -target arm64-apple-macos13.0
