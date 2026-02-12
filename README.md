@@ -12,24 +12,26 @@ Interactive terminal UI for reordering macOS WiFi network priorities.
 
 ## Installation
 
-### Using uv (recommended)
+> **Note**: PyPI package coming soon! For now, install from source.
 
-```bash
-uv pip install wifi-priority-tui
-```
-
-### Using pip
-
-```bash
-pip install wifi-priority-tui
-```
-
-### From source
+### From source (current method)
 
 ```bash
 git clone https://github.com/dhruv-anand-aintech/wifi-priority-tui
 cd wifi-priority-tui
 uv pip install -e .
+```
+
+### Using uv (once published to PyPI)
+
+```bash
+uv pip install wifi-priority-tui
+```
+
+### Using pip (once published to PyPI)
+
+```bash
+pip install wifi-priority-tui
 ```
 
 ## Usage
