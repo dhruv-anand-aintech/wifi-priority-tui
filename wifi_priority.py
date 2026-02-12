@@ -9,6 +9,7 @@ from typing import List
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.reactive import reactive
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
 
@@ -81,11 +82,13 @@ class WiFiReorderApp(App):
     """
 
     BINDINGS = [
-        Binding("ctrl+up,k", "move_up", "Move Up", show=True),
-        Binding("ctrl+down,j", "move_down", "Move Down", show=True),
+        Binding("space", "toggle_reorder_mode", "Reorder Mode", show=True),
         Binding("s", "save", "Save & Exit", show=True),
         Binding("q", "quit", "Quit", show=True),
     ]
+
+    # Track whether we're in reorder mode
+    reorder_mode: reactive[bool] = reactive(False)
 
     def __init__(self, networks: List[str], interface: str = "en0"):
         super().__init__()
@@ -101,8 +104,8 @@ class WiFiReorderApp(App):
             id="header-text"
         )
         yield Static(
-            "📋 Drag networks to change priority (higher = preferred)\n"
-            "   Use ↑↓ or k/j to select, Ctrl+↑↓ to move, 's' to save, 'q' to quit",
+            "📋 Higher position = preferred network\n"
+            "   Press SPACE to enter reorder mode, then ↑↓ to move • 's' to save • 'q' to quit",
             id="instructions"
         )
 
@@ -126,10 +129,32 @@ class WiFiReorderApp(App):
         """Update the status message."""
         status = self.query_one("#status", Static)
 
-        if self.networks != self.original_networks:
+        # Show reorder mode status first if active
+        if self.reorder_mode:
+            status.update("🔄 REORDER MODE: Use ↑↓ or k/j to move network • Press SPACE to exit")
+        elif self.networks != self.original_networks:
             status.update("⚠️  Changes not saved! Press 's' to save or 'q' to quit without saving.")
         else:
-            status.update("✅ No changes made.")
+            status.update("✅ No changes made. Press SPACE to reorder networks.")
+
+    def watch_reorder_mode(self, new_value: bool) -> None:
+        """Update UI when reorder mode changes."""
+        self.update_status()
+
+    def action_toggle_reorder_mode(self) -> None:
+        """Toggle reorder mode on/off."""
+        self.reorder_mode = not self.reorder_mode
+
+    def on_key(self, event) -> None:
+        """Handle key presses for mode-aware navigation."""
+        # In reorder mode, arrow keys and k/j move the item
+        if self.reorder_mode:
+            if event.key in ("up", "k"):
+                event.prevent_default()
+                self.action_move_up()
+            elif event.key in ("down", "j"):
+                event.prevent_default()
+                self.action_move_down()
 
     def action_move_up(self) -> None:
         """Move the selected network up in priority."""
