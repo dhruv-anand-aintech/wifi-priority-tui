@@ -36,11 +36,13 @@ uv pip install -e .
 
 ## Usage
 
-Simply run:
+**Important:** This app requires administrator privileges to modify network settings.
 
 ```bash
-wifi-priority
+sudo wifi-priority
 ```
+
+If you try to run without `sudo`, the app will exit with instructions.
 
 ### Keyboard Controls
 
