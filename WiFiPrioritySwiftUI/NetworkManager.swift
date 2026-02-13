@@ -89,7 +89,7 @@ class NetworkManager: ObservableObject {
             for network in self.networks.reversed() {
                 let result = self.executeSudoCommand(
                     "/usr/sbin/networksetup",
-                    arguments: ["-addpreferredwirelessnetworkatindex", self.interface, network, "0"]
+                    arguments: ["-addpreferredwirelessnetworkatindex", self.interface, network, "0", ""]
                 )
 
                 if case .failure(let error) = result {

@@ -25,15 +25,16 @@ while IFS= read -r network || [ -n "$network" ]; do
     count=$((count + 1))
     echo "[$count] Adding: $network"
 
-    if sudo networksetup -addpreferredwirelessnetworkatindex "$INTERFACE" "$network" 0 2>/dev/null; then
+    # Pass empty string as security type to let macOS auto-detect from Keychain
+    if sudo networksetup -addpreferredwirelessnetworkatindex "$INTERFACE" "$network" 0 "" 2>/dev/null; then
         echo "  ✅ Added"
     else
-        echo "  ⚠️  Failed (network might not have saved credentials)"
+        echo "  ⚠️  Failed"
         failed=$((failed + 1))
     fi
 
     sleep 0.1
-done < <(tac "$BACKUP_FILE")
+done < <(tail -r "$BACKUP_FILE")
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

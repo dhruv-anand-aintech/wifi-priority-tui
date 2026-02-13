@@ -363,7 +363,7 @@ class WiFiReorderApp(App):
             status.update(f"💾 Adding networks... ({current}/{total}) - {network}")
             result = subprocess.run(
                 ["networksetup", "-addpreferredwirelessnetworkatindex",
-                 self.interface, network, "0"],
+                 self.interface, network, "0", ""],
                 capture_output=True,
                 text=True
             )
