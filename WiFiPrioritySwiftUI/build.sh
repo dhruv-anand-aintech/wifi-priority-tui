@@ -27,6 +27,10 @@ swiftc -o build/WiFiPrioritySwiftUI.app/Contents/MacOS/WiFiPrioritySwiftUI \
     -framework AppKit \
     -target arm64-apple-macos13.0
 
+# Sign the app with ad-hoc signature
+echo "🔏 Signing app..."
+codesign --force --deep --sign - build/WiFiPrioritySwiftUI.app 2>/dev/null || echo "⚠️  Code signing failed (app may not run)"
+
 echo "✅ Build complete!"
 echo "📍 App location: build/WiFiPrioritySwiftUI.app"
 echo ""

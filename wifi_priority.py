@@ -255,17 +255,34 @@ class WiFiReorderApp(App):
         list_view.index = idx + 1
         self.update_status()
 
-    def _rebuild_list(self) -> None:
-        """Rebuild the list view with current network order."""
+    def _rebuild_list(self, keep_index: bool = True) -> None:
+        """Rebuild the list view with current network order.
+
+        Args:
+            keep_index: If True, maintain current selection index
+        """
         list_view = self.query_one("#network-list", ListView)
         current_index = list_view.index or 0
-        list_view.clear()
 
-        for network in self.networks:
-            list_view.append(NetworkListItem(network))
+        # For efficiency with large lists, only rebuild if necessary
+        # When swapping, we just update the label text instead of rebuilding
+        items = list(list_view.children)
+
+        if len(items) == len(self.networks):
+            # Update labels in place (much faster than rebuilding)
+            for i, network in enumerate(self.networks):
+                item = items[i]
+                if isinstance(item, NetworkListItem):
+                    item.label.update(f"  {network}")
+                    item.network_name = network
+        else:
+            # Full rebuild only when list size changed (network removed)
+            list_view.clear()
+            for network in self.networks:
+                list_view.append(NetworkListItem(network))
 
         # Restore selection, adjusting if we're past the end
-        if self.networks:
+        if self.networks and keep_index:
             list_view.index = min(current_index, len(self.networks) - 1)
 
         # Ensure ListView stays focused so selection remains visible
