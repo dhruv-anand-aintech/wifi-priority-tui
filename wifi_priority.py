@@ -284,22 +284,28 @@ class WiFiReorderApp(App):
             self.exit(message="No changes to save.")
             return
 
-        try:
-            # Show saving status
-            status = self.query_one("#status", Static)
-            status.update("💾 Creating backup...")
+        # Run save operation in background thread to avoid freezing UI
+        from threading import Thread
 
-            # Backup current network list before making changes
-            backup_path = self._backup_networks()
+        def save_thread():
+            try:
+                # Show saving status
+                status = self.query_one("#status", Static)
+                self.call_from_thread(status.update, "💾 Creating backup...")
 
-            status.update(f"💾 Backup saved to: {backup_path}")
-            time.sleep(1)
+                # Backup current network list before making changes
+                backup_path = self._backup_networks()
 
-            # Apply the new priority order with progress updates
-            self._apply_network_priority(status)
-            self.exit(message="✅ WiFi network priorities updated successfully!")
-        except Exception as e:
-            self.exit(message=f"❌ Error saving priorities: {e}")
+                self.call_from_thread(status.update, f"💾 Backup saved to: {backup_path}")
+                time.sleep(1)
+
+                # Apply the new priority order with progress updates
+                self._apply_network_priority(status)
+                self.call_from_thread(self.exit, message="✅ WiFi network priorities updated successfully!")
+            except Exception as e:
+                self.call_from_thread(self.exit, message=f"❌ Error saving priorities: {e}")
+
+        Thread(target=save_thread, daemon=True).start()
 
     def _backup_networks(self) -> str:
         """Backup current network list before making changes.
@@ -342,7 +348,7 @@ class WiFiReorderApp(App):
         # Remove all networks from the original list
         for network in self.original_networks:
             current += 1
-            status.update(f"💾 Removing networks... ({current}/{total}) - {network}")
+            self.call_from_thread(status.update, f"💾 Removing networks... ({current}/{total}) - {network}")
             result = subprocess.run(
                 ["networksetup", "-removepreferredwirelessnetwork",
                  self.interface, network],
@@ -352,7 +358,7 @@ class WiFiReorderApp(App):
             # Note: We ignore errors here as network might already be removed
 
         # Wait for macOS to process all removals
-        status.update("⏳ Waiting for macOS to process changes...")
+        self.call_from_thread(status.update, "⏳ Waiting for macOS to process changes...")
         time.sleep(0.5)
 
         # Add networks in reverse order (last added = highest priority)
@@ -360,7 +366,7 @@ class WiFiReorderApp(App):
         failed_networks = []
         for network in reversed(self.networks):
             current += 1
-            status.update(f"💾 Adding networks... ({current}/{total}) - {network}")
+            self.call_from_thread(status.update, f"💾 Adding networks... ({current}/{total}) - {network}")
             result = subprocess.run(
                 ["networksetup", "-addpreferredwirelessnetworkatindex",
                  self.interface, network, "0", ""],
@@ -382,11 +388,11 @@ class WiFiReorderApp(App):
 
         if failed_networks:
             failed_list = "\n".join([f"  • {net}: {err}" for net, err in failed_networks])
-            status.update(f"⚠️ Some networks failed to save:\n{failed_list}")
+            self.call_from_thread(status.update, f"⚠️ Some networks failed to save:\n{failed_list}")
             time.sleep(3)  # Give user time to read
             raise Exception(f"Failed to add {len(failed_networks)} network(s). See status for details.")
 
-        status.update("✅ All networks saved!")
+        self.call_from_thread(status.update, "✅ All networks saved!")
 
 
 def detect_wifi_interface() -> str:
