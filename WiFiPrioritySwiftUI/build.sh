@@ -2,10 +2,17 @@
 #
 # build.sh - Build WiFi Priority SwiftUI app
 #
-# This script compiles the SwiftUI app into a macOS .app bundle
+# Usage:
+#   ./build.sh                    # Ad-hoc signing (development only)
+#   ./build.sh "Developer ID"     # Developer ID signing (for distribution)
+#
+# To find your Developer ID:
+#   security find-identity -v -p codesigning | grep "Developer ID"
 #
 
 set -e
+
+SIGNING_IDENTITY="${1:--}"  # Default to ad-hoc signing
 
 echo "🔨 Building WiFi Priority SwiftUI..."
 
@@ -27,12 +34,28 @@ swiftc -o build/WiFiPrioritySwiftUI.app/Contents/MacOS/WiFiPrioritySwiftUI \
     -framework AppKit \
     -target arm64-apple-macos13.0
 
-# Sign the app with ad-hoc signature
-echo "🔏 Signing app..."
-codesign --force --deep --sign - build/WiFiPrioritySwiftUI.app 2>/dev/null || echo "⚠️  Code signing failed (app may not run)"
+# Sign the app
+echo "🔏 Signing app with: $SIGNING_IDENTITY"
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+    # Ad-hoc signing (development)
+    codesign --force --deep --sign - build/WiFiPrioritySwiftUI.app 2>/dev/null || echo "⚠️  Code signing failed"
+else
+    # Developer ID signing with timestamp (for distribution)
+    codesign --force --deep --sign "$SIGNING_IDENTITY" \
+        --timestamp \
+        --options runtime \
+        build/WiFiPrioritySwiftUI.app 2>/dev/null || echo "⚠️  Code signing failed"
+fi
 
 echo "✅ Build complete!"
 echo "📍 App location: build/WiFiPrioritySwiftUI.app"
+echo ""
+if [ "$SIGNING_IDENTITY" = "-" ]; then
+    echo "⚠️  Ad-hoc signed (unsigned). Users will see Gatekeeper warning."
+    echo "   To remove warning: xattr -d com.apple.quarantine build/WiFiPrioritySwiftUI.app"
+else
+    echo "✅ Developer ID signed! Gatekeeper will trust this app."
+fi
 echo ""
 echo "To run:"
 echo "  open build/WiFiPrioritySwiftUI.app"
