@@ -26,9 +26,11 @@ class NetworkManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var statusMessage: String?
+    @Published var lastBackupPath: String?
 
     private let interface = "en0"
     private var originalNetworks: [String] = []
+    private let backupDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".wifi-priority-backups")
 
     var hasChanges: Bool {
         networks != originalNetworks
@@ -74,6 +76,14 @@ class NetworkManager: ObservableObject {
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
+
+            // Backup before making changes
+            if let backupPath = self.backupNetworks() {
+                DispatchQueue.main.async {
+                    self.lastBackupPath = backupPath
+                    self.statusMessage = "✅ Backup saved"
+                }
+            }
 
             // Find networks that actually changed position
             var changedIndices = Set<Int>()
@@ -151,6 +161,109 @@ class NetworkManager: ObservableObject {
 
     func resetChanges() {
         networks = originalNetworks
+    }
+
+    private func backupNetworks() -> String? {
+        try? FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = formatter.string(from: Date())
+        let backupFile = backupDir.appendingPathComponent("networks_\(timestamp).txt")
+
+        var content = "# WiFi Priority Backup - \(Date())\n"
+        content += "# Interface: \(interface)\n"
+        content += "# Networks: \(originalNetworks.count)\n"
+        content += "#\n"
+        content += originalNetworks.joined(separator: "\n")
+
+        try? content.write(to: backupFile, atomically: true, encoding: .utf8)
+
+        // Clean up old backups (keep last 10)
+        if let backups = try? FileManager.default.contentsOfDirectory(at: backupDir, includingPropertiesForKeys: nil)
+            .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            .dropLast(10) {
+            for oldBackup in backups {
+                try? FileManager.default.removeItem(at: oldBackup)
+            }
+        }
+
+        return backupFile.path
+    }
+
+    func restoreFromLatestBackup(completion: @escaping (Result<Void, NetworkError>) -> Void) {
+        isLoading = true
+        statusMessage = "📂 Loading latest backup..."
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            // Find latest backup file
+            guard let backups = try? FileManager.default.contentsOfDirectory(at: self.backupDir, includingPropertiesForKeys: nil)
+                .sorted(by: { $0.lastPathComponent > $1.lastPathComponent }),
+              let latestBackup = backups.first else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    completion(.failure(.commandFailed("No backup files found")))
+                }
+                return
+            }
+
+            // Read backup file
+            guard let content = try? String(contentsOf: latestBackup, encoding: .utf8) else {
+                DispatchQueue.main.async {
+                    self.isLoading = false
+                    completion(.failure(.commandFailed("Could not read backup file")))
+                }
+                return
+            }
+
+            // Parse networks from backup (skip comments)
+            let restoredNetworks = content
+                .split(separator: "\n")
+                .filter { !$0.starts(with: "#") }
+                .map(String.init)
+                .filter { !$0.isEmpty }
+
+            DispatchQueue.main.async {
+                self.statusMessage = "🔄 Restoring \(restoredNetworks.count) networks..."
+            }
+
+            // Build restore command script
+            var commands: [String] = []
+
+            // Remove all current networks
+            for network in self.originalNetworks {
+                let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
+                commands.append("/usr/sbin/networksetup -removepreferredwirelessnetwork '\(self.interface)' '\(escapedNetwork)'")
+            }
+
+            commands.append("sleep 0.5")
+
+            // Add restored networks in order
+            for network in restoredNetworks.reversed() {
+                let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
+                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 ''")
+                commands.append("sleep 0.1")
+            }
+
+            let result = self.executeBatchSudoCommands(commands)
+
+            DispatchQueue.main.async {
+                self.isLoading = false
+
+                switch result {
+                case .success:
+                    self.originalNetworks = restoredNetworks
+                    self.networks = restoredNetworks
+                    self.statusMessage = "✅ Networks restored!"
+                    completion(.success(()))
+                case .failure(let error):
+                    self.statusMessage = nil
+                    completion(.failure(error))
+                }
+            }
+        }
     }
 
     // MARK: - Private Methods

@@ -46,12 +46,24 @@ struct ContentView: View {
             // Status Bar
             StatusBarView(hasChanges: networkManager.hasChanges)
 
+            // Backup Info
+            if let backupPath = networkManager.lastBackupPath {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Last backup: \(backupPath)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+            }
+
             // Action Buttons
             ActionButtonsView(
                 hasChanges: networkManager.hasChanges,
                 isLoading: networkManager.isLoading,
                 onSave: saveChanges,
                 onReset: networkManager.resetChanges,
+                onRestore: restoreFromBackup,
                 onQuit: quitApp
             )
             .padding()
@@ -90,6 +102,21 @@ struct ContentView: View {
                 showingAlert = true
             case .failure(let error):
                 alertTitle = "Error"
+                alertMessage = error.localizedDescription
+                showingAlert = true
+            }
+        }
+    }
+
+    private func restoreFromBackup() {
+        networkManager.restoreFromLatestBackup { result in
+            switch result {
+            case .success:
+                alertTitle = "Restore Complete"
+                alertMessage = "Networks restored from backup!"
+                showingAlert = true
+            case .failure(let error):
+                alertTitle = "Restore Failed"
                 alertMessage = error.localizedDescription
                 showingAlert = true
             }
@@ -229,6 +256,7 @@ struct ActionButtonsView: View {
     let isLoading: Bool
     let onSave: () -> Void
     let onReset: () -> Void
+    let onRestore: () -> Void
     let onQuit: () -> Void
 
     var body: some View {
@@ -238,6 +266,11 @@ struct ActionButtonsView: View {
                     onReset()
                 }
                 .keyboardShortcut(.escape, modifiers: [])
+            } else {
+                Button("Restore from Backup") {
+                    onRestore()
+                }
+                .disabled(isLoading)
             }
 
             Spacer()
