@@ -116,9 +116,69 @@ When adding tests, note:
 - The app requires macOS and sudo privileges, so tests should not make real networksetup calls
 - Consider testing the list reordering logic, UI state transitions, and change detection separately from system integration
 
-## Packaging
+## Packaging & Distribution
 
+### Python Package
 This project is configured as a Python package with an entry point:
 - Entry point: `wifi-priority` → `wifi_priority:main`
 - Single module: `wifi_priority.py` (no package directory)
 - Minimal dependencies: only `textual>=0.47.0`
+- Published on PyPI: https://pypi.org/project/wifi-priority-tui/
+
+### Homebrew Distribution
+Both versions are distributed via Homebrew through a custom tap repository:
+- **Tap repo**: https://github.com/dhruv-anand-aintech/homebrew-tap
+- **SwiftUI app cask**: `brew install wifi-priority`
+- **Python TUI formula**: `brew install wifi-priority-tui`
+
+## Release Workflow
+
+Releasing new versions is automated via GitHub Actions:
+
+### 1. Build and Test Locally
+```bash
+# Build SwiftUI app
+cd WiFiPrioritySwiftUI && ./build.sh
+
+# Build Python distributions
+python -m build
+
+# Test both apps before releasing
+./build/WiFiPrioritySwiftUI.app  # Test macOS app
+sudo python -m wifi_priority      # Test TUI
+```
+
+### 2. Create Release
+```bash
+# Create GitHub release with both distributions
+gh release create v0.5.0 \
+  WiFiPrioritySwiftUI-0.5.0.zip \
+  dist/wifi_priority_tui-0.5.0* \
+  --title "v0.5.0 - Feature Description" \
+  --notes "Release notes here"
+```
+
+### 3. Automated Homebrew Tap Update (GitHub Action)
+Once the release is published, a GitHub Action automatically:
+1. Downloads release assets (app zip + source tarball)
+2. Calculates SHA256 checksums
+3. Updates `Casks/wifi-priority.rb` (SwiftUI version & checksum)
+4. Updates `Formula/wifi-priority-tui.rb` (Python TUI version & checksum)
+5. Commits and pushes changes to the Homebrew tap repo
+
+**No manual steps needed!** The workflow uses the `TAP_REPO_TOKEN` secret which is already configured.
+
+### Version Format
+- Versions follow semantic versioning: `v0.4.9`, `v0.5.0`, etc.
+- Update `pyproject.toml` version before building
+- Update SwiftUI `Info.plist` CFBundleShortVersionString before building
+- GitHub Actions automatically detects version from the git tag
+
+### Backup & Restore Features (v0.4.9+)
+Both versions now support automatic backups:
+- **Automatic backups**: Timestamped files saved to `~/.wifi-priority-backups/`
+- **Backup management**: Keeps last 10 backups, older ones auto-deleted
+- **SwiftUI restore**: Button appears when no changes are pending
+- **Python TUI CLI**:
+  - `wifi-priority --backup-info` - View backup metadata
+  - `sudo wifi-priority --restore-latest` - Restore from latest backup
