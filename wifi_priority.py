@@ -370,12 +370,46 @@ class WiFiReorderApp(App):
 
         return str(backup_file)
 
+    def _get_network_security_types(self) -> dict:
+        """Detect security types of networks using airport command.
+
+        Returns a dict mapping network name to security type.
+        """
+        security_types = {}
+        airport_path = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+
+        try:
+            result = subprocess.run(
+                [airport_path, "-s"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            # Parse airport output: SSID BSSID             RSSI CHANNEL HT CC SECURITY
+            for line in result.stdout.split('\n'):
+                parts = line.strip().split()
+                if len(parts) >= 7:
+                    # SSID is first, security info is at the end
+                    ssid = parts[0]
+                    # Security is everything after CC (column 5)
+                    security = ' '.join(parts[6:])
+                    if ssid in self.original_networks:
+                        security_types[ssid] = security
+        except Exception:
+            pass
+
+        return security_types
+
     def _apply_network_priority(self, status: Static) -> None:
         """Apply the new network priority order using networksetup.
 
-        Strategy: Remove all networks, then re-add them in reverse order.
-        Networks are added at index 0, so the last one added becomes highest priority.
+        Removes all networks and re-adds them in the new order,
+        preserving their security types from Keychain/airport scan.
         """
+        # Try to detect security types before we start removing networks
+        security_types = self._get_network_security_types()
+
         total = len(self.original_networks) + len(self.networks)
         current = 0
 
@@ -383,27 +417,31 @@ class WiFiReorderApp(App):
         for network in self.original_networks:
             current += 1
             self.call_from_thread(status.update, f"💾 Removing networks... ({current}/{total}) - {network}")
-            result = subprocess.run(
+            subprocess.run(
                 ["networksetup", "-removepreferredwirelessnetwork",
                  self.interface, network],
                 capture_output=True,
                 text=True
             )
-            # Note: We ignore errors here as network might already be removed
+            time.sleep(0.05)
 
         # Wait for macOS to process all removals
         self.call_from_thread(status.update, "⏳ Waiting for macOS to process changes...")
         time.sleep(0.5)
 
         # Add networks in reverse order (last added = highest priority)
-        # Don't specify security type - macOS uses existing credentials from Keychain
+        # Use detected security type if available, otherwise use empty string
         failed_networks = []
         for network in reversed(self.networks):
             current += 1
             self.call_from_thread(status.update, f"💾 Adding networks... ({current}/{total}) - {network}")
+
+            # Use detected security type, or empty string as fallback
+            security_type = security_types.get(network, "")
+
             result = subprocess.run(
                 ["networksetup", "-addpreferredwirelessnetworkatindex",
-                 self.interface, network, "0", ""],
+                 self.interface, network, "0", security_type],
                 capture_output=True,
                 text=True
             )
@@ -414,10 +452,8 @@ class WiFiReorderApp(App):
                 if not error_msg:
                     error_msg = f"Command failed with exit code {result.returncode}"
                 failed_networks.append((network, error_msg))
-                # Continue processing other networks
                 continue
 
-            # Small delay to ensure macOS processes each addition sequentially
             time.sleep(0.1)
 
         if failed_networks:

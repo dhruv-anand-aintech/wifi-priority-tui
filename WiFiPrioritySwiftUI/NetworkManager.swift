@@ -73,6 +73,37 @@ class NetworkManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
+            // First, try to detect security types from airport scan
+            var securityTypes: [String: String] = [:]
+            let airportPath = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: airportPath)
+            process.arguments = ["-s"]
+
+            let pipe = Pipe()
+            process.standardOutput = pipe
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    for line in output.split(separator: "\n") {
+                        let parts = line.split(separator: " ", maxSplits: 6, omittingEmptySubsequences: true)
+                        if parts.count >= 7 {
+                            let ssid = String(parts[0])
+                            let security = String(parts[6])
+                            if self.originalNetworks.contains(ssid) {
+                                securityTypes[ssid] = security
+                            }
+                        }
+                    }
+                }
+            } catch {
+                // airport command failed, fall back to empty strings
+            }
+
             // Build a single shell script with all commands to avoid multiple password prompts
             var commands: [String] = []
 
@@ -86,10 +117,11 @@ class NetworkManager: ObservableObject {
             commands.append("sleep 0.5")
 
             // Add networks in reverse order (last added = highest priority)
-            // Don't specify security type - macOS uses existing credentials from Keychain
+            // Use detected security type if available, otherwise use empty string
             for network in self.networks.reversed() {
                 let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
-                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 ''")
+                let security = securityTypes[network] ?? ""
+                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 '\(security)'")
                 commands.append("sleep 0.1")
             }
 
