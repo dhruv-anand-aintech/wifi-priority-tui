@@ -73,41 +73,39 @@ class NetworkManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
+            // Build a single shell script with all commands to avoid multiple password prompts
+            var commands: [String] = []
+
             // Remove all networks first
             for network in self.originalNetworks {
-                _ = self.executeSudoCommand(
-                    "/usr/sbin/networksetup",
-                    arguments: ["-removepreferredwirelessnetwork", self.interface, network]
-                )
+                let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
+                commands.append("/usr/sbin/networksetup -removepreferredwirelessnetwork '\(self.interface)' '\(escapedNetwork)'")
             }
 
             // Wait for macOS to process all removals
-            Thread.sleep(forTimeInterval: 0.5)
+            commands.append("sleep 0.5")
 
             // Add networks in reverse order (last added = highest priority)
             // Don't specify security type - macOS uses existing credentials from Keychain
             for network in self.networks.reversed() {
-                let result = self.executeSudoCommand(
-                    "/usr/sbin/networksetup",
-                    arguments: ["-addpreferredwirelessnetworkatindex", self.interface, network, "0", ""]
-                )
-
-                if case .failure(let error) = result {
-                    DispatchQueue.main.async {
-                        self.isLoading = false
-                        completion(.failure(.networkAddFailed(network, error.localizedDescription)))
-                    }
-                    return
-                }
-
-                // Small delay to ensure macOS processes each addition sequentially
-                Thread.sleep(forTimeInterval: 0.1)
+                let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
+                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 ''")
+                commands.append("sleep 0.1")
             }
 
+            // Execute all commands in one sudo session
+            let result = self.executeBatchSudoCommands(commands)
+
             DispatchQueue.main.async {
-                self.originalNetworks = self.networks
                 self.isLoading = false
-                completion(.success(()))
+
+                switch result {
+                case .success:
+                    self.originalNetworks = self.networks
+                    completion(.success(()))
+                case .failure(let error):
+                    completion(.failure(error))
+                }
             }
         }
     }
@@ -188,5 +186,31 @@ class NetworkManager: ObservableObject {
         }
 
         return .success(result.stringValue ?? "")
+    }
+
+    private func executeBatchSudoCommands(_ commands: [String]) -> Result<Void, NetworkError> {
+        // Execute all commands in a single sudo session to avoid multiple password prompts
+        let shellScript = commands.joined(separator: "; ")
+
+        // Escape for AppleScript (escape backslashes and quotes)
+        let escapedScript = shellScript
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let script = """
+        do shell script "\(escapedScript)" with administrator privileges
+        """
+
+        let appleScript = NSAppleScript(source: script)
+        var error: NSDictionary?
+
+        guard appleScript?.executeAndReturnError(&error) != nil else {
+            if let error = error {
+                return .failure(.commandFailed(error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"))
+            }
+            return .failure(.commandFailed("Failed to execute commands"))
+        }
+
+        return .success(())
     }
 }
