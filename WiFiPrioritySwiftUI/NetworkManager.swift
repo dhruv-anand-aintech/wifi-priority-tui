@@ -163,6 +163,30 @@ class NetworkManager: ObservableObject {
         networks = originalNetworks
     }
 
+    private func loadSecurityTypesFromPlist() -> [String: String] {
+        var securityTypes: [String: String] = [:]
+        let plistPath = "/Library/Preferences/com.apple.wifi.known-networks.plist"
+
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: plistPath)) else {
+            return securityTypes
+        }
+
+        guard let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] else {
+            return securityTypes
+        }
+
+        if let knownNetworks = plist["KnownNetworks"] as? [[String: Any]] {
+            for networkInfo in knownNetworks {
+                if let ssid = networkInfo["SSID_STR"] as? String {
+                    let securityType = (networkInfo["SecurityType"] as? String) ?? "Unknown"
+                    securityTypes[ssid] = securityType
+                }
+            }
+        }
+
+        return securityTypes
+    }
+
     private func backupNetworks() -> String? {
         try? FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
 
@@ -171,14 +195,19 @@ class NetworkManager: ObservableObject {
         let timestamp = formatter.string(from: Date())
         let backupFile = backupDir.appendingPathComponent("networks_\(timestamp).txt")
 
+        let securityTypes = loadSecurityTypesFromPlist()
+
         var content = "# WiFi Priority Backup - \(Date())\n"
         content += "# Interface: \(interface)\n"
         content += "# Networks: \(originalNetworks.count)\n"
         content += "# Format: name|security_type\n"
         content += "# (security_type is informational; macOS uses Keychain for credentials)\n"
         content += "#\n"
-        // Write networks with placeholder for security type (determined at restore time)
-        content += originalNetworks.map { $0 + "|" }.joined(separator: "\n")
+        // Write networks with security types from plist
+        content += originalNetworks.map { network in
+            let securityType = securityTypes[network] ?? "Unknown"
+            return "\(network)|\(securityType)"
+        }.joined(separator: "\n")
 
         try? content.write(to: backupFile, atomically: true, encoding: .utf8)
 
