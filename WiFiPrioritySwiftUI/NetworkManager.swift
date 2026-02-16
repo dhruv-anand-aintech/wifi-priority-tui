@@ -25,6 +25,7 @@ class NetworkManager: ObservableObject {
     @Published var networks: [String] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var statusMessage: String?
 
     private let interface = "en0"
     private var originalNetworks: [String] = []
@@ -69,6 +70,7 @@ class NetworkManager: ObservableObject {
         }
 
         isLoading = true
+        statusMessage = "💾 Creating backup..."
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
@@ -91,6 +93,10 @@ class NetworkManager: ObservableObject {
             }
             networksToModify.formUnion(removedNetworks)
 
+            DispatchQueue.main.async {
+                self.statusMessage = "💾 Backup created"
+            }
+
             // Build a single shell script with all commands to avoid multiple password prompts
             var commands: [String] = []
 
@@ -104,12 +110,20 @@ class NetworkManager: ObservableObject {
             // Wait for macOS to process removals
             commands.append("sleep 0.5")
 
+            DispatchQueue.main.async {
+                self.statusMessage = "💾 Updating networks... (removing \(networksToModify.count))"
+            }
+
             // Re-add ALL networks in new priority order to set correct priorities
             // Even unchanged networks need to be re-added to maintain correct order
             for network in self.networks.reversed() {
                 let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
                 commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 ''")
                 commands.append("sleep 0.1")
+            }
+
+            DispatchQueue.main.async {
+                self.statusMessage = "💾 Re-adding networks in priority order..."
             }
 
             // Execute all commands in one sudo session
@@ -121,8 +135,10 @@ class NetworkManager: ObservableObject {
                 switch result {
                 case .success:
                     self.originalNetworks = self.networks
+                    self.statusMessage = "✅ Networks updated successfully!"
                     completion(.success(()))
                 case .failure(let error):
+                    self.statusMessage = nil
                     completion(.failure(error))
                 }
             }

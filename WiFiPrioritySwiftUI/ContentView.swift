@@ -26,8 +26,15 @@ struct ContentView: View {
 
             // Network List
             if networkManager.isLoading {
-                ProgressView("Loading networks...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .scaleEffect(1.5)
+
+                    Text(networkManager.statusMessage ?? "Loading networks...")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = networkManager.errorMessage {
                 ErrorView(error: error, onRetry: networkManager.loadNetworks)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -61,7 +68,14 @@ struct ContentView: View {
             }
         }
         .alert(alertTitle, isPresented: $showingAlert) {
-            Button("OK", role: .cancel) { }
+            if alertTitle == "Success" {
+                Button("Quit") {
+                    quitApp()
+                }
+                Button("Keep Open", role: .cancel) { }
+            } else {
+                Button("OK", role: .cancel) { }
+            }
         } message: {
             Text(alertMessage)
         }
@@ -74,11 +88,6 @@ struct ContentView: View {
                 alertTitle = "Success"
                 alertMessage = "WiFi network priorities updated successfully!"
                 showingAlert = true
-
-                // Quit after successful save
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    quitApp()
-                }
             case .failure(let error):
                 alertTitle = "Error"
                 alertMessage = error.localizedDescription
