@@ -1,0 +1,149 @@
+name: Update Homebrew Tap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-tap:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout main repo
+        uses: actions/checkout@v3
+
+      - name: Get release version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download release assets
+        run: |
+          mkdir -p /tmp/release
+          cd /tmp/release
+
+          # Download all release assets
+          gh release download v${{ steps.version.outputs.version }} -R dhruv-anand-aintech/wifi-priority-tui
+
+          # List downloaded files
+          ls -lh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate checksums
+        id: checksums
+        run: |
+          cd /tmp/release
+
+          # Find and checksum the app zip
+          APP_ZIP=$(ls WiFiPrioritySwiftUI-*.zip 2>/dev/null | head -1)
+          if [ -n "$APP_ZIP" ]; then
+            APP_SHA=$(shasum -a 256 "$APP_ZIP" | awk '{print $1}')
+            echo "app_sha=$APP_SHA" >> $GITHUB_OUTPUT
+            echo "App SHA256: $APP_SHA"
+          fi
+
+          # Find and checksum the source tarball
+          TARBALL=$(ls wifi_priority_tui-*.tar.gz 2>/dev/null | head -1)
+          if [ -n "$TARBALL" ]; then
+            TARBALL_SHA=$(shasum -a 256 "$TARBALL" | awk '{print $1}')
+            echo "tarball_sha=$TARBALL_SHA" >> $GITHUB_OUTPUT
+            echo "Tarball SHA256: $TARBALL_SHA"
+          fi
+
+      - name: Checkout homebrew tap repo
+        uses: actions/checkout@v3
+        with:
+          repository: dhruv-anand-aintech/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.TAP_REPO_TOKEN }}
+
+      - name: Update Cask (SwiftUI app)
+        run: |
+          cat > /tmp/update_cask.py << 'EOF'
+          import sys
+          import re
+
+          cask_file = "homebrew-tap/Casks/wifi-priority.rb"
+          version = sys.argv[1]
+          sha = sys.argv[2]
+
+          with open(cask_file, 'r') as f:
+              content = f.read()
+
+          # Update version
+          content = re.sub(
+              r'version\s*=\s*"[^"]*"',
+              f'version = "{version}"',
+              content
+          )
+
+          # Update SHA256
+          content = re.sub(
+              r'sha256\s*=\s*"[^"]*"',
+              f'sha256 = "{sha}"',
+              content
+          )
+
+          with open(cask_file, 'w') as f:
+              f.write(content)
+
+          print(f"Updated cask to version {version}")
+          EOF
+
+          python3 /tmp/update_cask.py "${{ steps.version.outputs.version }}" "${{ steps.checksums.outputs.app_sha }}"
+
+      - name: Update Formula (Python TUI)
+        run: |
+          cat > /tmp/update_formula.py << 'EOF'
+          import sys
+          import re
+
+          formula_file = "homebrew-tap/Formula/wifi-priority-tui.rb"
+          version = sys.argv[1]
+          sha = sys.argv[2]
+
+          with open(formula_file, 'r') as f:
+              content = f.read()
+
+          # Update version in URL
+          content = re.sub(
+              r'url\s*=\s*"[^"]*wifi_priority_tui-[^"]*\.tar\.gz"',
+              f'url = "https://files.pythonhosted.org/packages/source/w/wifi-priority-tui/wifi_priority_tui-{version}.tar.gz"',
+              content
+          )
+
+          # Update SHA256
+          content = re.sub(
+              r'sha256\s*=\s*"[^"]*"',
+              f'sha256 = "{sha}"',
+              content,
+              count=1
+          )
+
+          with open(formula_file, 'w') as f:
+              f.write(content)
+
+          print(f"Updated formula to version {version}")
+          EOF
+
+          python3 /tmp/update_formula.py "${{ steps.version.outputs.version }}" "${{ steps.checksums.outputs.tarball_sha }}"
+
+      - name: Commit and push to tap repo
+        run: |
+          cd homebrew-tap
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/wifi-priority.rb Formula/wifi-priority-tui.rb
+
+          # Only commit if there are changes
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update to v${{ steps.version.outputs.version }} - automated tap update"
+            git push
+            echo "✅ Successfully updated Homebrew tap to v${{ steps.version.outputs.version }}"
+          fi
