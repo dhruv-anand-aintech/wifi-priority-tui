@@ -4,12 +4,13 @@ Interactive TUI for reordering macOS WiFi network priorities.
 """
 
 import os
+import plistlib
 import subprocess
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -341,30 +342,91 @@ class WiFiReorderApp(App):
 
         Thread(target=save_thread, daemon=True).start()
 
-    def _get_network_security_type(self, network: str) -> str:
-        """Get security type for a network by scanning with airport.
+    def _load_security_types_from_corewlan(self) -> Dict[str, str]:
+        """Load security types from CoreWLAN framework (preferred method).
 
-        Returns the security type (e.g., "WPA2(PSK/AES)", "Open") or "Unknown" if not found.
+        Returns a dictionary mapping network SSID to security type.
+        Gracefully falls back to empty dict if CoreWLAN unavailable.
         """
+        security_types = {}
+
         try:
-            airport_path = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
-            result = subprocess.run(
-                [airport_path, "-s"],
-                capture_output=True,
-                text=True,
-                timeout=3
-            )
+            import CoreWLAN
 
-            for line in result.stdout.split("\n"):
-                if network in line:
-                    # Extract security type (last space-separated token after SSID)
-                    parts = line.split()
-                    if parts:
-                        return parts[-1]
+            client = CoreWLAN.CWWiFiClient.sharedWiFiClient()
+            interface = client.interface()
 
-            return "Unknown"
+            if interface is None:
+                return security_types
+
+            config = interface.configuration()
+            if config is None:
+                return security_types
+
+            profiles = config.networkProfiles()
+            if not profiles:
+                return security_types
+
+            # Get count of profiles
+            count = profiles.count()
+            for i in range(count):
+                profile = profiles.objectAtIndex_(i)
+                ssid = profile.ssid()
+
+                if ssid:
+                    # Extract security type from profile's string representation
+                    # The description contains "Security: <type>" which we parse
+                    profile_str = str(profile)
+                    security_type = "Unknown"
+
+                    for line in profile_str.split("\n"):
+                        if line.strip().startswith("Security:"):
+                            security_type = line.split("Security:")[-1].strip()
+                            break
+
+                    security_types[ssid] = security_type
+
+        except ImportError:
+            # CoreWLAN not available, will try plist fallback
+            pass
         except Exception:
-            return "Unknown"
+            # Any other error, gracefully degrade
+            pass
+
+        return security_types
+
+    def _load_security_types_from_plist(self) -> Dict[str, str]:
+        """Load security types from macOS plist (fallback method).
+
+        Returns a dictionary mapping network SSID to security type.
+        This is a fallback when CoreWLAN is unavailable.
+        """
+        security_types = {}
+        plist_path = Path("/Library/Preferences/com.apple.wifi.known-networks.plist")
+
+        try:
+            with open(plist_path, "rb") as f:
+                plist = plistlib.load(f)
+
+            if "KnownNetworks" in plist:
+                for network_info in plist["KnownNetworks"]:
+                    ssid = network_info.get("SSID_STR")
+                    security_type = network_info.get("SecurityType")
+                    if ssid:
+                        security_types[ssid] = security_type or "Unknown"
+        except PermissionError:
+            pass  # Will return empty dict, security types will show as Unknown
+        except Exception:
+            pass
+
+        return security_types
+
+    def _get_network_security_type(self, network: str, security_types: Dict[str, str]) -> str:
+        """Get security type for a network from the cached security types dictionary.
+
+        Returns the security type (e.g., "WPA2") or "Unknown" if not found.
+        """
+        return security_types.get(network, "Unknown")
 
     def _backup_networks(self) -> str:
         """Backup current network list before making changes.
@@ -374,6 +436,11 @@ class WiFiReorderApp(App):
         # Create backups directory in user's home
         backup_dir = Path.home() / ".wifi-priority-backups"
         backup_dir.mkdir(exist_ok=True)
+
+        # Load security types - try CoreWLAN first, fall back to plist
+        security_types = self._load_security_types_from_corewlan()
+        if not security_types:
+            security_types = self._load_security_types_from_plist()
 
         # Create timestamped backup file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -388,7 +455,7 @@ class WiFiReorderApp(App):
             f.write("# (security_type is informational; macOS uses Keychain for credentials)\n")
             f.write("#\n")
             for network in self.original_networks:
-                security_type = self._get_network_security_type(network)
+                security_type = self._get_network_security_type(network, security_types)
                 f.write(f"{network}|{security_type}\n")
 
         # Keep only last 10 backups
