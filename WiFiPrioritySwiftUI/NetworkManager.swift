@@ -165,8 +165,16 @@ class NetworkManager: ObservableObject {
 
     private func executeSudoCommand(_ command: String, arguments: [String]) -> Result<String, NetworkError> {
         // For sudo commands, we need to use AppleScript to prompt for password
+        // Properly escape arguments for shell execution
+        let escapedArgs = arguments.map { arg -> String in
+            // Escape single quotes and backslashes, then wrap in single quotes
+            let escaped = arg.replacingOccurrences(of: "\\", with: "\\\\")
+                             .replacingOccurrences(of: "'", with: "'\\''")
+            return "'\(escaped)'"
+        }.joined(separator: " ")
+
         let script = """
-        do shell script "\(command) \(arguments.map { "\"\($0)\"" }.joined(separator: " "))" with administrator privileges
+        do shell script "\(command) \(escapedArgs)" with administrator privileges
         """
 
         let appleScript = NSAppleScript(source: script)
