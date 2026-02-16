@@ -73,55 +73,42 @@ class NetworkManager: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
 
-            // First, try to detect security types from airport scan
-            var securityTypes: [String: String] = [:]
-            let airportPath = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: airportPath)
-            process.arguments = ["-s"]
-
-            let pipe = Pipe()
-            process.standardOutput = pipe
-
-            do {
-                try process.run()
-                process.waitUntilExit()
-
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8) {
-                    for line in output.split(separator: "\n") {
-                        let parts = line.split(separator: " ", maxSplits: 6, omittingEmptySubsequences: true)
-                        if parts.count >= 7 {
-                            let ssid = String(parts[0])
-                            let security = String(parts[6])
-                            if self.originalNetworks.contains(ssid) {
-                                securityTypes[ssid] = security
-                            }
-                        }
-                    }
+            // Find networks that actually changed position
+            var changedIndices = Set<Int>()
+            for i in 0..<self.networks.count {
+                if i >= self.originalNetworks.count || self.originalNetworks[i] != self.networks[i] {
+                    changedIndices.insert(i)
                 }
-            } catch {
-                // airport command failed, fall back to empty strings
             }
+
+            // Networks that were removed
+            let removedNetworks = Set(self.originalNetworks).subtracting(Set(self.networks))
+
+            // Networks to modify: those that changed position or were removed
+            var networksToModify = Set<String>()
+            for i in changedIndices {
+                networksToModify.insert(self.networks[i])
+            }
+            networksToModify.formUnion(removedNetworks)
 
             // Build a single shell script with all commands to avoid multiple password prompts
             var commands: [String] = []
 
-            // Remove all networks first
-            for network in self.originalNetworks {
+            // Remove only networks that changed or were deleted
+            for network in networksToModify {
                 let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
                 commands.append("/usr/sbin/networksetup -removepreferredwirelessnetwork '\(self.interface)' '\(escapedNetwork)'")
+                commands.append("sleep 0.05")
             }
 
-            // Wait for macOS to process all removals
+            // Wait for macOS to process removals
             commands.append("sleep 0.5")
 
-            // Add networks in reverse order (last added = highest priority)
-            // Use detected security type if available, otherwise use empty string
+            // Re-add ALL networks in new priority order to set correct priorities
+            // Even unchanged networks need to be re-added to maintain correct order
             for network in self.networks.reversed() {
                 let escapedNetwork = network.replacingOccurrences(of: "'", with: "'\\''")
-                let security = securityTypes[network] ?? ""
-                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 '\(security)'")
+                commands.append("/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '\(self.interface)' '\(escapedNetwork)' 0 ''")
                 commands.append("sleep 0.1")
             }
 
