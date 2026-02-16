@@ -73,8 +73,21 @@ Networks at the top of the list have higher priority. macOS will automatically c
 ### 🖥️ TUI (Terminal) - This Package
 Python-based terminal interface with keyboard-driven navigation. Perfect for terminal enthusiasts and SSH sessions.
 
+**Install via pip:**
+```bash
+pip install wifi-priority-tui
+sudo wifi-priority
+```
+
 ### 🎨 SwiftUI (Native macOS)
-Native macOS app with drag-and-drop interface. See [`WiFiPrioritySwiftUI/`](WiFiPrioritySwiftUI/) for details.
+Native macOS app with drag-and-drop interface.
+
+**Install via Homebrew:**
+```bash
+brew install --cask dhruv-anand-aintech/tap/wifi-priority
+```
+
+Or build from source - see [`WiFiPrioritySwiftUI/`](WiFiPrioritySwiftUI/) for details.
 
 ## Why?
 
