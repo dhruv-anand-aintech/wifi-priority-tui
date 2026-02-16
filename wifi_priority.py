@@ -292,7 +292,24 @@ class WiFiReorderApp(App):
         """Remove a network from the list."""
         if 0 <= index < len(self.networks):
             self.networks.pop(index)
-            self._rebuild_list()
+
+            # Determine the new index after removal
+            # If we removed the last item, go to the new last item
+            # Otherwise, stay at the same index (which is now the next network)
+            new_index = min(index, len(self.networks) - 1) if self.networks else None
+
+            # Rebuild the list without trying to preserve the old index
+            list_view = self.query_one("#network-list", ListView)
+            list_view.clear()
+            for network in self.networks:
+                list_view.append(NetworkListItem(network))
+
+            # Set focus to the next network (or previous if we removed the last one)
+            if new_index is not None:
+                list_view.index = new_index
+
+            # Ensure focus is visible
+            list_view.focus()
             self.update_status()
 
     def action_save(self) -> None:
