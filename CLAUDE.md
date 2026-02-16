@@ -109,6 +109,21 @@ def _rebuild_list(self) -> None:
 - **sudo required**: Network priority changes require administrator privileges
 - **WiFi interface**: Assumes `en0` as the WiFi interface (standard for most Macs)
 
+## Code Signing & Distribution Notes
+
+### Ad-hoc Signing (Current)
+- **Status**: App is signed with ad-hoc signature (no certificate)
+- **Gatekeeper Warning**: Yes, when downloaded directly from GitHub
+- **Homebrew Install**: No warning (Homebrew bypasses Gatekeeper)
+- **User Workaround**: `xattr -d com.apple.quarantine /Applications/WiFi\ Priority.app`
+
+### Developer ID Signing (Optional - Requires $99 Developer Program)
+To eliminate Gatekeeper warnings for direct downloads:
+1. Enroll in Apple Developer Program
+2. Create Developer ID Application certificate
+3. Build with: `./build.sh "Developer ID Application: Name (ID)"`
+4. (Optional) Notarize the app for maximum trust
+
 ## Testing Considerations
 
 When adding tests, note:
