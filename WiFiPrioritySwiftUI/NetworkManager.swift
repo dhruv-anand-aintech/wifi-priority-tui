@@ -222,16 +222,15 @@ class NetworkManager: ObservableObject {
             }
 
             // Parse networks from backup (skip comments, handle pipe-separated format)
-            let restoredNetworks = content
-                .split(separator: "\n")
-                .filter { !$0.starts(with: "#") }
-                .map(String.init)
-                .filter { !$0.isEmpty }
-                .map { line in
-                    // Handle new format: "network_name|security_type"
-                    line.split(separator: "|", maxSplits: 1).map(String.init).first ?? line
-                }
-                .compactMap { $0 }
+            var restoredNetworks: [String] = []
+            for line in content.split(separator: "\n") {
+                let trimmed = String(line).trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty && !trimmed.starts(with: "#") else { continue }
+
+                // Handle new format: "network_name|security_type"
+                let networkName = trimmed.split(separator: "|", maxSplits: 1).first.map(String.init) ?? trimmed
+                restoredNetworks.append(networkName)
+            }
 
             DispatchQueue.main.async {
                 self.statusMessage = "🔄 Restoring \(restoredNetworks.count) networks..."
