@@ -491,15 +491,174 @@ def get_preferred_networks(interface: str = "en0") -> List[str]:
     return networks
 
 
+def get_latest_backup_path() -> str | None:
+    """Get path to the latest backup file."""
+    backup_dir = Path.home() / ".wifi-priority-backups"
+    if not backup_dir.exists():
+        return None
+
+    backups = sorted(backup_dir.glob("networks_*.txt"), reverse=True)
+    return str(backups[0]) if backups else None
+
+
+def restore_networks_from_backup(interface: str = "en0") -> None:
+    """Restore networks from the latest backup file."""
+    backup_path = get_latest_backup_path()
+
+    if not backup_path:
+        print("❌ No backup files found in ~/.wifi-priority-backups/")
+        sys.exit(1)
+
+    print(f"📂 Restoring from: {backup_path}")
+
+    # Read backup file
+    try:
+        with open(backup_path, "r") as f:
+            content = f.read()
+    except Exception as e:
+        print(f"❌ Failed to read backup file: {e}")
+        sys.exit(1)
+
+    # Parse networks from backup (skip comments)
+    restored_networks = [
+        line.strip() for line in content.split("\n")
+        if line.strip() and not line.startswith("#")
+    ]
+
+    if not restored_networks:
+        print("❌ No networks found in backup file")
+        sys.exit(1)
+
+    print(f"🔄 Restoring {len(restored_networks)} networks...")
+
+    # Get current networks
+    current_networks = get_preferred_networks(interface)
+
+    # Build restore command script
+    commands = []
+
+    # Remove all current networks
+    for network in current_networks:
+        escaped_network = network.replace("'", "'\\''")
+        commands.append(f"/usr/sbin/networksetup -removepreferredwirelessnetwork '{interface}' '{escaped_network}'")
+
+    commands.append("sleep 0.5")
+
+    # Add restored networks in order (reversed for proper priority)
+    for network in reversed(restored_networks):
+        escaped_network = network.replace("'", "'\\''")
+        commands.append(f"/usr/sbin/networksetup -addpreferredwirelessnetworkatindex '{interface}' '{escaped_network}' 0 ''")
+        commands.append("sleep 0.1")
+
+    # Execute all commands in one sudo session via AppleScript
+    shell_script = "; ".join(commands)
+    escaped_script = shell_script.replace("\\", "\\\\").replace('"', '\\"')
+
+    apple_script = f"""
+    do shell script "{escaped_script}" with administrator privileges
+    """
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", apple_script],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        if result.returncode == 0:
+            print("✅ Networks restored successfully!")
+        else:
+            print(f"❌ Restore failed: {result.stderr}")
+            sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error executing restore: {e}")
+        sys.exit(1)
+
+
+def show_backup_info() -> None:
+    """Show information about the latest backup."""
+    backup_path = get_latest_backup_path()
+
+    if not backup_path:
+        print("❌ No backup files found in ~/.wifi-priority-backups/")
+        sys.exit(1)
+
+    try:
+        with open(backup_path, "r") as f:
+            lines = f.readlines()
+
+        # Extract metadata from comments
+        metadata = {}
+        networks = []
+
+        for line in lines:
+            if line.startswith("#"):
+                if ": " in line:
+                    key, value = line.lstrip("#").strip().split(": ", 1)
+                    metadata[key] = value
+            else:
+                network = line.strip()
+                if network:
+                    networks.append(network)
+
+        print(f"📂 Latest Backup: {backup_path}")
+        print(f"\nMetadata:")
+        for key, value in metadata.items():
+            print(f"  {key}: {value}")
+        print(f"\nNetworks ({len(networks)}):")
+        for i, network in enumerate(networks, 1):
+            print(f"  {i}. {network}")
+    except Exception as e:
+        print(f"❌ Error reading backup: {e}")
+        sys.exit(1)
+
+
 def main():
     """Main entry point."""
-    # Check if running with sudo
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="WiFi Network Priority Manager for macOS"
+    )
+    parser.add_argument(
+        "--restore-latest",
+        action="store_true",
+        help="Restore networks from the latest backup file"
+    )
+    parser.add_argument(
+        "--backup-info",
+        action="store_true",
+        help="Show information about the latest backup"
+    )
+
+    args = parser.parse_args()
+
+    # Handle backup/restore operations
+    if args.restore_latest:
+        if os.geteuid() != 0:
+            print("❌ Restore requires administrator privileges.")
+            print(f"Please run with sudo: sudo wifi-priority --restore-latest")
+            sys.exit(1)
+
+        interface = detect_wifi_interface()
+        restore_networks_from_backup(interface)
+        sys.exit(0)
+
+    if args.backup_info:
+        show_backup_info()
+        sys.exit(0)
+
+    # Check if running with sudo for main app
     if os.geteuid() != 0:
         print("❌ This application requires administrator privileges to modify network settings.")
         print("\nPlease run with sudo:")
         print(f"  sudo wifi-priority")
         print(f"\nOr if running directly:")
         print(f"  sudo python {sys.argv[0]}")
+        print("\nOther commands:")
+        print("  wifi-priority --backup-info          Show latest backup information")
+        print("  sudo wifi-priority --restore-latest   Restore from latest backup")
         sys.exit(1)
 
     try:
