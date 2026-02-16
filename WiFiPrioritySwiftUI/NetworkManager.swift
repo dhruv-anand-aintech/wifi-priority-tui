@@ -174,8 +174,11 @@ class NetworkManager: ObservableObject {
         var content = "# WiFi Priority Backup - \(Date())\n"
         content += "# Interface: \(interface)\n"
         content += "# Networks: \(originalNetworks.count)\n"
+        content += "# Format: name|security_type\n"
+        content += "# (security_type is informational; macOS uses Keychain for credentials)\n"
         content += "#\n"
-        content += originalNetworks.joined(separator: "\n")
+        // Write networks with placeholder for security type (determined at restore time)
+        content += originalNetworks.map { $0 + "|" }.joined(separator: "\n")
 
         try? content.write(to: backupFile, atomically: true, encoding: .utf8)
 
@@ -218,12 +221,17 @@ class NetworkManager: ObservableObject {
                 return
             }
 
-            // Parse networks from backup (skip comments)
+            // Parse networks from backup (skip comments, handle pipe-separated format)
             let restoredNetworks = content
                 .split(separator: "\n")
                 .filter { !$0.starts(with: "#") }
                 .map(String.init)
                 .filter { !$0.isEmpty }
+                .map { line in
+                    // Handle new format: "network_name|security_type"
+                    line.split(separator: "|", maxSplits: 1).map(String.init).first ?? line
+                }
+                .compactMap { $0 }
 
             DispatchQueue.main.async {
                 self.statusMessage = "🔄 Restoring \(restoredNetworks.count) networks..."

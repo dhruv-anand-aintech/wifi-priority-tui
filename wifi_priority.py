@@ -341,6 +341,31 @@ class WiFiReorderApp(App):
 
         Thread(target=save_thread, daemon=True).start()
 
+    def _get_network_security_type(self, network: str) -> str:
+        """Get security type for a network by scanning with airport.
+
+        Returns the security type (e.g., "WPA2(PSK/AES)", "Open") or "Unknown" if not found.
+        """
+        try:
+            airport_path = "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport"
+            result = subprocess.run(
+                [airport_path, "-s"],
+                capture_output=True,
+                text=True,
+                timeout=3
+            )
+
+            for line in result.stdout.split("\n"):
+                if network in line:
+                    # Extract security type (last space-separated token after SSID)
+                    parts = line.split()
+                    if parts:
+                        return parts[-1]
+
+            return "Unknown"
+        except Exception:
+            return "Unknown"
+
     def _backup_networks(self) -> str:
         """Backup current network list before making changes.
 
@@ -354,14 +379,17 @@ class WiFiReorderApp(App):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = backup_dir / f"networks_{timestamp}.txt"
 
-        # Write network list to backup file
+        # Write network list to backup file with security types
         with open(backup_file, "w") as f:
             f.write(f"# WiFi Priority Backup - {datetime.now()}\n")
             f.write(f"# Interface: {self.interface}\n")
             f.write(f"# Networks: {len(self.original_networks)}\n")
+            f.write("# Format: name|security_type\n")
+            f.write("# (security_type is informational; macOS uses Keychain for credentials)\n")
             f.write("#\n")
             for network in self.original_networks:
-                f.write(f"{network}\n")
+                security_type = self._get_network_security_type(network)
+                f.write(f"{network}|{security_type}\n")
 
         # Keep only last 10 backups
         backups = sorted(backup_dir.glob("networks_*.txt"))
@@ -519,11 +547,14 @@ def restore_networks_from_backup(interface: str = "en0") -> None:
         print(f"❌ Failed to read backup file: {e}")
         sys.exit(1)
 
-    # Parse networks from backup (skip comments)
-    restored_networks = [
-        line.strip() for line in content.split("\n")
-        if line.strip() and not line.startswith("#")
-    ]
+    # Parse networks from backup (skip comments, handle pipe-separated format)
+    restored_networks = []
+    for line in content.split("\n"):
+        line = line.strip()
+        if line and not line.startswith("#"):
+            # Handle new format: "network_name|security_type"
+            network_name = line.split("|")[0] if "|" in line else line
+            restored_networks.append(network_name)
 
     if not restored_networks:
         print("❌ No networks found in backup file")
@@ -588,7 +619,7 @@ def show_backup_info() -> None:
         with open(backup_path, "r") as f:
             lines = f.readlines()
 
-        # Extract metadata from comments
+        # Extract metadata from comments and networks with security types
         metadata = {}
         networks = []
 
@@ -598,17 +629,22 @@ def show_backup_info() -> None:
                     key, value = line.lstrip("#").strip().split(": ", 1)
                     metadata[key] = value
             else:
-                network = line.strip()
-                if network:
-                    networks.append(network)
+                line = line.strip()
+                if line:
+                    # Handle new format: "network_name|security_type"
+                    if "|" in line:
+                        name, security = line.split("|", 1)
+                        networks.append((name, security))
+                    else:
+                        networks.append((line, "Unknown"))
 
         print(f"📂 Latest Backup: {backup_path}")
         print(f"\nMetadata:")
         for key, value in metadata.items():
             print(f"  {key}: {value}")
         print(f"\nNetworks ({len(networks)}):")
-        for i, network in enumerate(networks, 1):
-            print(f"  {i}. {network}")
+        for i, (name, security) in enumerate(networks, 1):
+            print(f"  {i}. {name:40} | {security}")
     except Exception as e:
         print(f"❌ Error reading backup: {e}")
         sys.exit(1)
