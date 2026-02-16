@@ -14,7 +14,13 @@ Interactive terminal UI for reordering macOS WiFi network priorities.
 
 ## Installation
 
-### Using uv (recommended)
+### Using Homebrew (recommended for macOS)
+
+```bash
+brew install dhruv-anand-aintech/tap/wifi-priority-tui
+```
+
+### Using uv
 
 ```bash
 uv pip install wifi-priority-tui
