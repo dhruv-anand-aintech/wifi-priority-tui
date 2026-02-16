@@ -93,6 +93,15 @@ Native macOS app with drag-and-drop interface.
 brew install --cask dhruv-anand-aintech/tap/wifi-priority
 ```
 
+**First Launch - Gatekeeper Warning:**
+When launching for the first time, macOS may show a warning about the app not being verified. This is normal for ad-hoc signed apps. Remove the quarantine flag:
+
+```bash
+xattr -d com.apple.quarantine /Applications/WiFi\ Priority.app
+```
+
+Then launch the app normally - no warning on subsequent launches.
+
 Or build from source - see [`WiFiPrioritySwiftUI/`](WiFiPrioritySwiftUI/) for details.
 
 ## Why?
