@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var showingAlert = false
     @State private var alertMessage = ""
     @State private var alertTitle = ""
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +50,16 @@ struct ContentView: View {
             .padding()
         }
         .frame(minWidth: 500, minHeight: 400)
+        .onAppear {
+            // Refresh network list when view appears
+            networkManager.loadNetworks()
+        }
+        .onChange(of: scenePhase) { newPhase in
+            // Refresh when app becomes active
+            if newPhase == .active {
+                networkManager.loadNetworks()
+            }
+        }
         .alert(alertTitle, isPresented: $showingAlert) {
             Button("OK", role: .cancel) { }
         } message: {
